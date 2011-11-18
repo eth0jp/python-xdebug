@@ -1,0 +1,37 @@
+Debug a call function::
+
+    xd = PyXdebug()
+    #xd.collect_imports = 1
+    #xd.collect_params = 0
+    #xd.collect_return = 0
+    xd.run_func(func)
+    print xd.get_result()
+
+Debug a execute statement::
+
+    xd = PyXdebug()
+    xd.run_statement(statement)
+    print xd.get_result()
+
+Debug a run script file::
+
+    python pyxdebug.py script_path
+
+Debug a run script file (module)::
+
+    python -m pyxdebug script_path
+
+Options::
+  -h, --help            show this help message and exit
+  -o, --outfile         Save stats to <outfile>
+  -i, --collect_imports
+                        This setting, defaulting to 1, controls whether
+                        PyXdebug should write the filename used in import or
+                        reload to the trace files.
+  -p, --collect_params  This setting, defaulting to 0, controls whether
+                        PyXdebug should collect the parameters passed to
+                        functions when a function call is recorded in either
+                        the function trace or the stack trace.
+  -r, --collect_return  This setting, defaulting to 0, controls whether
+                        PyXdebug should write the return value of function
+                        calls to the trace files.
