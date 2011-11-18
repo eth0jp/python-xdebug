@@ -170,7 +170,7 @@ class PyXdebug(object):
             raise PyXdebugError('PyXdebug has not run yet')
         result = u"TRACE START [%s]\n" % (time.strftime('%Y-%m-%d %H:%M:%S', self.start_gmtime))
         result += u"\n".join([o.get_result() for o in self.result])
-        result += u"\nTRACE END [%s]" % (time.strftime('%Y-%m-%d %H:%M:%S', self.end_gmtime))
+        result += u"\nTRACE END  [%s]\n\n" % (time.strftime('%Y-%m-%d %H:%M:%S', self.end_gmtime))
         return result
 
 
