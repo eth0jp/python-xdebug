@@ -4,6 +4,7 @@ Debug a call function::
     #xd.collect_imports = 1
     #xd.collect_params = 0
     #xd.collect_return = 0
+    #xd.collect_assignments = 0
     xd.run_func(func)
     print xd.get_result()
 
@@ -35,3 +36,8 @@ Options::
   -r, --collect_return  This setting, defaulting to 0, controls whether
                         PyXdebug should write the return value of function
                         calls to the trace files.
+  -a, --collect_assignments
+                        This setting, defaulting to 0, controls whether
+                        PyXdebug should add variable assignments to function
+                        traces.
+

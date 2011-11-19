@@ -7,6 +7,7 @@ import re
 import logging
 import traceback
 import os
+import linecache
 from pprint import pformat
 try:
     import resource
@@ -34,6 +35,7 @@ class PyXdebug(object):
         self.collect_imports = 1
         self.collect_params = 0
         self.collect_return = 0
+        self.collect_assignments = 0
 
     def initialize(self):
         self.start_time = None
@@ -41,6 +43,7 @@ class PyXdebug(object):
         self.end_gmtime = None
         self.call_depth = 0
         self.call_func_name = None
+        self.late_dispatch = None
         self.result = []
 
     def run_func(self, func, *args, **kwds):
@@ -97,8 +100,8 @@ class PyXdebug(object):
             __builtin__.reload = __pyxdebug_reload_hook
 
         # profile hook
-        original_profile = sys.getprofile()
-        sys.setprofile(self.trace_dispatch)
+        original_trace = sys.gettrace()
+        sys.settrace(self.trace_dispatch)
 
         # start time
         self.start_time = time.time()
@@ -108,8 +111,13 @@ class PyXdebug(object):
             # call
             return func(*args, **kwds)
         finally:
+            # late
+            if self.late_dispatch:
+                self.late_dispatch()
+                self.late_dispatch = None
+
             # reset profile hook
-            sys.setprofile(original_profile)
+            sys.settrace(original_trace)
 
             # end time
             self.end_gmtime = time.gmtime()
@@ -134,11 +142,22 @@ class PyXdebug(object):
             if self.call_func_name is None or self.call_func_name!=frame.f_code.co_name:
                 return
 
+        # late
+        if self.late_dispatch:
+            self.late_dispatch()
+            self.late_dispatch = None
+
         # dispatch
         if event=='call' or event=='c_call':
             self.trace_call(frame, arg)
         elif event=='return' or event=='c_return':
             self.trace_return(frame, arg)
+        elif event=='line' and self.collect_assignments:
+            def late():
+                self.trace_line(frame, arg)
+            self.late_dispatch = late
+
+        return self.trace_dispatch
 
     def trace_call(self, frame, arg):
         trace_index = len(self.result)
@@ -152,6 +171,38 @@ class PyXdebug(object):
         if self.collect_return:
             trace = ReturnTrace(arg, self.call_depth)
             self.result.append(trace)
+
+    def trace_line(self, frame, arg):
+        filename = frame.f_code.co_filename
+        lineno = frame.f_lineno
+        line = linecache.getline(filename, lineno).strip()
+        match = re.compile(r"^([^\+\-\*/=]+)([\+\-\*/]?=[^=])(.+)$").match(line)
+        if match:
+            varnames = match.group(1).strip()
+            try:
+                varnames = re.compile(r"^\((.+)\)$").match(varnames).group(1).strip()
+            except:
+                pass 
+            if re.compile(r"^(([a-zA-Z0-9_]+\.)?[a-zA-Z0-9_]+)(\s*,\s*(([a-zA-Z0-9_]+\.)?[a-zA-Z0-9_]+))*(\s*,\s*)?$").match(varnames):
+                varnames = re.compile(r"\s*,\s*").split(varnames)
+            else:
+                varnames = None
+            if varnames:
+                for varname in varnames:
+                    objectname = None
+                    attrname = None
+                    value = None
+                    try:
+                        objectname, attrname = varname.split('.')
+                    except:
+                        pass
+                    if objectname:
+                        object = frame.f_locals.get(objectname, None)
+                        value = getattr(object, attrname, None)
+                    else:
+                        value = frame.f_locals.get(varname, None)
+                    trace = SubstituteTrace(frame, varname, value, self.call_depth)
+                    self.result.append(trace)
 
     def trace_import(self, frame, arg):
         trace_index = len(self.result)
@@ -250,6 +301,20 @@ class ReturnTrace(object):
     def get_result(self):
         sp = u'  '*self.call_depth
         return u'%s>=> %s' % (sp, pformat(self.ret_value))
+
+
+class SubstituteTrace(object):
+    def __init__(self, frame, varname, value, call_depth):
+        self.frame = frame
+        self.varname = varname
+        self.value = value
+        self.call_depth = call_depth
+
+    def get_result(self):
+        sp = u' '*24 + u'  '*self.call_depth
+        filename =  self.frame.f_code.co_filename
+        lineno = self.frame.f_lineno
+        return u'%s=> %s = %s %s:%d' % (sp, self.varname, pformat(self.value), filename, lineno)
 
 
 class ImportTrace(CallTrace):
@@ -371,9 +436,6 @@ def main():
                 raise OptionValueError(str(e))
         setattr(parser.values, option.dest, value)
 
-    def add_output_option(short, long, *args, **kwds):
-        parser.add_option(short, long, action="callback", callback=action_output, *args, **kwds)
-
     # parser int option
     def action_int(option, opt_str, value, parser, *args, **kwargs):
         rargs = parser.rargs
@@ -390,17 +452,56 @@ def main():
             raise OptionValueError('%s option requires an integer value' % opt_str)
         setattr(parser.values, option.dest, value)
 
-    def add_int_option(short, long, *args, **kwds):
-        parser.add_option(short, long, action="callback", callback=action_int, *args, **kwds)
-
     # parser
-    usage = 'pyxdebug.py [-o output_file_path] [-i collect_import] [-p collect_params] [-r collect_return] script_path [args ...]'
+    usage = 'pyxdebug.py [-o output_file_path] [-i collect_import] [-p collect_params] [-r collect_return] [-a collect_assignments] script_path [args ...]'
     parser = OptionParser(usage=usage)
     parser.allow_interspersed_args = False
-    add_output_option('-o', '--outfile', dest="outfile", help="Save stats to <outfile>", default=sys.stdout)
-    add_int_option('-i', '--collect_imports', dest="collect_imports", help="This setting, defaulting to 1, controls whether PyXdebug should write the filename used in import or reload to the trace files.", default=1)
-    add_int_option('-p', '--collect_params', dest="collect_params", help="This setting, defaulting to 0, controls whether PyXdebug should collect the parameters passed to functions when a function call is recorded in either the function trace or the stack trace.", default=0)
-    add_int_option('-r', '--collect_return', dest="collect_return", help="This setting, defaulting to 0, controls whether PyXdebug should write the return value of function calls to the trace files.", default=0)
+
+    parser.add_option(
+        '-o',
+        '--outfile',
+        action="callback",
+        callback=action_output,
+        dest="outfile",
+        help="Save stats to <outfile>",
+        default=sys.stdout
+    )
+    parser.add_option(
+        '-i',
+        '--collect_imports',
+        action="callback",
+        callback=action_int,
+        dest="collect_imports",
+        help="This setting, defaulting to 1, controls whether PyXdebug should write the filename used in import or reload to the trace files.",
+        default=1
+    )
+    parser.add_option(
+        '-p',
+        '--collect_params',
+        action="callback",
+        callback=action_int,
+        dest="collect_params",
+        help="This setting, defaulting to 0, controls whether PyXdebug should collect the parameters passed to functions when a function call is recorded in either the function trace or the stack trace.",
+        default=0
+    )
+    parser.add_option(
+        '-r',
+        '--collect_return',
+        action="callback",
+        callback=action_int,
+        dest="collect_return",
+        help="This setting, defaulting to 0, controls whether PyXdebug should write the return value of function calls to the trace files.",
+        default=0
+    )
+    parser.add_option(
+        '-a',
+        '--collect_assignments',
+        action="callback",
+        callback=action_int,
+        dest="collect_assignments",
+        help="This setting, defaulting to 0, controls whether PyXdebug should add variable assignments to function traces.",
+        default=0
+    )
 
     (options, args) = parser.parse_args()
 
@@ -418,6 +519,7 @@ def main():
     xd.collect_imports = options.collect_imports
     xd.collect_params = options.collect_params
     xd.collect_return = options.collect_return
+    xd.collect_assignments = options.collect_assignments
     xd.run_file(script_path)
     result = xd.get_result()
 
