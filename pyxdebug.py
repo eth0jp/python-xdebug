@@ -16,7 +16,7 @@ except ImportError:
 import __builtin__
 
 
-__version__ = '1.1'
+__version__ = '1.2'
 __author__ = 'Yoshida Tetsuya'
 __license__ = 'MIT License'
 
@@ -128,8 +128,8 @@ class PyXdebug(object):
                 __builtin__.reload = original_reload
 
             # end
-            trace = FinishTrace()
-            trace.start(self.start_time)
+            trace = FinishTrace(None, 0)
+            trace.setvalue(self.start_time)
             self.result.append(trace)
 
     def trace_dispatch(self, frame, event, arg):
@@ -161,15 +161,16 @@ class PyXdebug(object):
 
     def trace_call(self, frame, arg):
         trace_index = len(self.result)
-        trace = CallTrace()
-        trace.start(frame, self.call_depth, self.start_time, self.collect_params)
+        trace = CallTrace(frame, self.call_depth)
+        trace.setvalue(self.start_time, self.collect_params)
         self.result.append(trace)
         self.call_depth += 1
 
     def trace_return(self, frame, arg):
         self.call_depth -= 1
         if self.collect_return:
-            trace = ReturnTrace(arg, self.call_depth)
+            trace = ReturnTrace(None, self.call_depth)
+            trace.setvalue(arg)
             self.result.append(trace)
 
     def trace_line(self, frame, arg):
@@ -201,20 +202,22 @@ class PyXdebug(object):
                         value = getattr(object, attrname, None)
                     else:
                         value = frame.f_locals.get(varname, None)
-                    trace = SubstituteTrace(frame, varname, value, self.call_depth)
+                    trace = SubstituteTrace(frame, self.call_depth)
+                    trace.setvalue(varname, value)
                     self.result.append(trace)
 
     def trace_import(self, frame, arg):
         trace_index = len(self.result)
-        trace = ImportTrace()
-        trace.start(frame, arg[0], arg[1], self.call_depth, self.start_time)
+        trace = ImportTrace(frame, self.call_depth)
+        trace.setvalue(arg[0], arg[1], self.start_time)
         self.result.append(trace)
         self.call_depth += 1
 
     def trace_reload(self, frame, arg):
-        trace = ReloadTrace(frame, arg, self.call_depth)
-        self.call_depth += 1
+        trace = ReloadTrace(frame, self.call_depth)
+        trace.setvalue(atg)
         self.result.append(trace)
+        self.call_depth += 1
 
     def get_result(self):
         if self.end_gmtime is None:
@@ -225,21 +228,26 @@ class PyXdebug(object):
         return result
 
 
-class CallTrace(object):
-    def __init__(self):
+class AbstractTrace(object):
+    def __init__(self, callee, call_depth):
+        if callee:
+            self.callee = callee
+            self.caller = callee.f_back
+        else:
+            self.callee = None
+            self.caller = None
+        self.call_depth = call_depth
+
+
+class CallTrace(AbstractTrace):
+    def __init__(self, callee, call_depth):
+        super(CallTrace, self).__init__(callee, call_depth)
         self.time = None
-        self.callee = None
-        self.caller = None
-        self.call_depth = None
         self.collect_params = None
         self.memory = None
 
-    def start(self, frame, call_depth, start_time, collect_params=False):
+    def setvalue(self, start_time, collect_params=False):
         self.time = time.time() - start_time
-        if frame:
-            self.callee = frame
-            self.caller = frame.f_back
-        self.call_depth = call_depth
         self.collect_params = collect_params
         if resource is not None:
             self.memory = resource.getrusage(resource.RUSAGE_SELF).ru_minflt
@@ -293,38 +301,40 @@ class CallTrace(object):
         return u'%10.4f %10d   %s-> %s(%s) %s:%d' % (self.time or 0.0, self.memory or 0, sp, self.callee_name(), params, self.caller_filename(), self.caller_lineno())
 
 
-class ReturnTrace(object):
-    def __init__(self, ret_value, call_depth):
+class ReturnTrace(AbstractTrace):
+    def setvalue(self, ret_value):
         self.ret_value = ret_value
-        self.call_depth = call_depth
-
-    def get_result(self):
-        sp = u'  '*self.call_depth
-        return u'%s>=> %s' % (sp, pformat(self.ret_value))
-
-
-class SubstituteTrace(object):
-    def __init__(self, frame, varname, value, call_depth):
-        self.frame = frame
-        self.varname = varname
-        self.value = value
-        self.call_depth = call_depth
 
     def get_result(self):
         sp = u' '*24 + u'  '*self.call_depth
-        filename =  self.frame.f_code.co_filename
-        lineno = self.frame.f_lineno
+        return u'%s>=> %s' % (sp, pformat(self.ret_value))
+
+
+class SubstituteTrace(AbstractTrace):
+    def __init__(self, callee, call_depth):
+        super(SubstituteTrace, self).__init__(callee, call_depth)
+        self.varname = None
+        self.value = None
+
+    def setvalue(self, varname, value):
+        self.varname = varname
+        self.value = value
+
+    def get_result(self):
+        sp = u' '*24 + u'  '*self.call_depth
+        filename =  self.callee.f_code.co_filename
+        lineno = self.callee.f_lineno
         return u'%s=> %s = %s %s:%d' % (sp, self.varname, pformat(self.value), filename, lineno)
 
 
 class ImportTrace(CallTrace):
-    def __init__(self):
-        super(ImportTrace, self).__init__()
+    def __init__(self, callee, call_depth):
+        super(ImportTrace, self).__init__(callee, call_depth)
         self.name = None
         self.fromlist = None
 
-    def start(self, frame, name, fromlist, call_depth, start_time):
-        super(ImportTrace, self).start(frame, call_depth, start_time)
+    def setvalue(self, name, fromlist, start_time):
+        super(ImportTrace, self).setvalue(start_time)
         self.name = name
         self.fromlist = fromlist
 
@@ -340,11 +350,13 @@ class ImportTrace(CallTrace):
         return u'%10.4f %10d   %s-> %s %s:%d' % (self.time or 0.0, self.memory or 0, sp, imp, self.caller_filename(), self.caller_lineno())
 
 
-class ReloadTrace(object):
-    def __init__(self, frame, module, call_depth):
-        self.frame = frame
+class ReloadTrace(AbstractTrace):
+    def __init__(self, callee, call_depth):
+        super(ReloadTrace, self).__init__(callee, call_depth)
+        self.module = None
+
+    def setvalue(self, module):
         self.module = module
-        self.call_depth = call_depth
 
     def get_result(self):
         sp = u' '*24 + u'  '*self.call_depth
@@ -352,8 +364,8 @@ class ReloadTrace(object):
 
 
 class FinishTrace(CallTrace):
-    def start(self, start_time):
-        super(FinishTrace, self).start(None, None, start_time)
+    def setvalue(self, start_time):
+        super(FinishTrace, self).setvalue(start_time)
 
     def get_result(self):
         return u'%10.4f %10d' % (self.time or 0.0, self.memory or 0)
