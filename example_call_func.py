@@ -19,6 +19,10 @@ class TestCls1(object):
 
 
 xd = PyXdebug()
+#xd.collect_imports = 1
+#xd.collect_params = 0
+#xd.collect_return = 0
+#xd.collect_assignments = 0
 
 tc = TestCls1()
 xd.run_func(tc.loop)

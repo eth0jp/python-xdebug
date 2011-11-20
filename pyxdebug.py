@@ -16,7 +16,7 @@ except ImportError:
 import __builtin__
 
 
-__version__ = '1.2'
+__version__ = '1.2.1'
 __author__ = 'Yoshida Tetsuya'
 __license__ = 'MIT License'
 
@@ -215,7 +215,7 @@ class PyXdebug(object):
 
     def trace_reload(self, frame, arg):
         trace = ReloadTrace(frame, self.call_depth)
-        trace.setvalue(atg)
+        trace.setvalue(arg, self.start_time)
         self.result.append(trace)
         self.call_depth += 1
 
@@ -350,17 +350,18 @@ class ImportTrace(CallTrace):
         return u'%10.4f %10d   %s-> %s %s:%d' % (self.time or 0.0, self.memory or 0, sp, imp, self.caller_filename(), self.caller_lineno())
 
 
-class ReloadTrace(AbstractTrace):
+class ReloadTrace(CallTrace):
     def __init__(self, callee, call_depth):
         super(ReloadTrace, self).__init__(callee, call_depth)
         self.module = None
 
-    def setvalue(self, module):
-        self.module = module
+    def setvalue(self, module, start_time):
+        super(ReloadTrace, self).setvalue(start_time)
+        self.module = getattr(module, '__name__', None)
 
     def get_result(self):
-        sp = u' '*24 + u'  '*self.call_depth
-        return u'%s-> reload(%s)' % (sp, self.module)
+        sp = u'  '*self.call_depth
+        return u'%10.4f %10d   %s-> reload(%s) %s:%d' % (self.time or 0.0, self.memory or 0, sp, self.module, self.caller_filename(), self.caller_lineno())
 
 
 class FinishTrace(CallTrace):

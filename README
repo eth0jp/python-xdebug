@@ -22,7 +22,9 @@ Debug a run script file (module)::
 
     python -m pyxdebug script_path
 
-Options::
+Usage: pyxdebug.py [-o output_file_path] [-i collect_import] [-p collect_params] [-r collect_return] [-a collect_assignments] script_path [args ...]
+
+Options:
   -h, --help            show this help message and exit
   -o, --outfile         Save stats to <outfile>
   -i, --collect_imports
@@ -40,4 +42,3 @@ Options::
                         This setting, defaulting to 0, controls whether
                         PyXdebug should add variable assignments to function
                         traces.
-
