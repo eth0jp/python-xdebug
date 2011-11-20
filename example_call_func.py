@@ -5,18 +5,14 @@
 
 from pyxdebug import PyXdebug
 
-class TestCls1(object):
-   def __init__(self):
-       self.num = 0
+class Fib(object):
+    def __init__(self):
+        pass
 
-   def add(self):
-       self.num += 1
-
-   def loop(self, count=10):
-       for i in xrange(count):
-           import wave, string
-           self.add()
-
+    def calc(self, n):
+        if n<3:
+            return 1
+        return self.calc(n - 1) + self.calc(n - 2)
 
 xd = PyXdebug()
 #xd.collect_imports = 1
@@ -24,6 +20,8 @@ xd = PyXdebug()
 #xd.collect_return = 0
 #xd.collect_assignments = 0
 
-tc = TestCls1()
-xd.run_func(tc.loop)
+fib = Fib()
+result = xd.run_func(fib.calc, 6)
+
+print "result: %d\n" % result
 print xd.get_result()

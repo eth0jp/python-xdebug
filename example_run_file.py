@@ -3,18 +3,16 @@
 #
 # usage: python -m pyxdebug example_run_file.py
 
-class TestCls1(object):
-   def __init__(self):
-       self.num = 0
+class Fib(object):
+    def __init__(self):
+        pass
 
-   def add(self):
-       self.num += 1
+    def calc(self, n):
+        if n<3:
+            return 1
+        return self.calc(n - 1) + self.calc(n - 2)
 
-   def loop(self, count=10):
-       for i in xrange(count):
-           import wave, string
-           self.add()
+fib = Fib()
+result = fib.calc(6)
 
-
-tc = TestCls1()
-tc.loop()
+print "result: %d\n" % result

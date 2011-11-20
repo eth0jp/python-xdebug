@@ -16,7 +16,7 @@ except ImportError:
 import __builtin__
 
 
-__version__ = '1.2.1'
+__version__ = '1.2.2'
 __author__ = 'Yoshida Tetsuya'
 __license__ = 'MIT License'
 
@@ -49,7 +49,7 @@ class PyXdebug(object):
     def run_func(self, func, *args, **kwds):
         self.initialize()
         self.call_func_name = func.__name__
-        self._run(func, *args, **kwds)
+        return self._run(func, *args, **kwds)
 
     def run_statement(self, statement):
         self.initialize()
