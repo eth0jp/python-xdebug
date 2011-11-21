@@ -1,12 +1,10 @@
 # set encoding=utf-8
 
 import sys
+import os
 import time
 import inspect
 import re
-import logging
-import traceback
-import os
 import linecache
 from pprint import pformat
 try:
@@ -16,7 +14,7 @@ except ImportError:
 import __builtin__
 
 
-__version__ = '1.2.2'
+__version__ = '1.2.3'
 __author__ = 'Yoshida Tetsuya'
 __license__ = 'MIT License'
 
@@ -43,12 +41,14 @@ class PyXdebug(object):
         self.end_gmtime = None
         self.call_depth = 0
         self.call_func_name = None
-        self.late_dispatch = None
+        self.call_late_dispatch = []
+        self.late_dispatch = []
+        self.late_dispatch2 = []
         self.result = []
 
     def run_func(self, func, *args, **kwds):
         self.initialize()
-        self.call_func_name = func.__name__
+        self.call_func_name = getattr(func, '__name__', None)
         return self._run(func, *args, **kwds)
 
     def run_statement(self, statement):
@@ -111,11 +111,6 @@ class PyXdebug(object):
             # call
             return func(*args, **kwds)
         finally:
-            # late
-            if self.late_dispatch:
-                self.late_dispatch()
-                self.late_dispatch = None
-
             # reset profile hook
             sys.settrace(original_trace)
 
@@ -127,7 +122,7 @@ class PyXdebug(object):
                 __builtin__.__import__ = original_import
                 __builtin__.reload = original_reload
 
-            # end
+            # finish
             trace = FinishTrace(None, 0)
             trace.setvalue(self.start_time)
             self.result.append(trace)
@@ -142,25 +137,23 @@ class PyXdebug(object):
             if self.call_func_name is None or self.call_func_name!=frame.f_code.co_name:
                 return
 
-        # late
-        if self.late_dispatch:
-            self.late_dispatch()
-            self.late_dispatch = None
-
         # dispatch
         if event=='call' or event=='c_call':
             self.trace_call(frame, arg)
         elif event=='return' or event=='c_return':
             self.trace_return(frame, arg)
         elif event=='line' and self.collect_assignments:
-            def late():
-                self.trace_line(frame, arg)
-            self.late_dispatch = late
+            self.late_dispatch.append(Clone(frame))
+            if len(self.late_dispatch)==2:
+                f = Clone(self.late_dispatch[1])
+                f2 = self.late_dispatch.pop(0)
+                f.f_code = f2.f_code
+                f.f_lineno = f2.f_lineno
+                self.trace_line(f, None)
 
         return self.trace_dispatch
 
     def trace_call(self, frame, arg):
-        trace_index = len(self.result)
         trace = CallTrace(frame, self.call_depth)
         trace.setvalue(self.start_time, self.collect_params)
         self.result.append(trace)
@@ -179,6 +172,10 @@ class PyXdebug(object):
         line = linecache.getline(filename, lineno).strip()
         match = re.compile(r"^([^\+\-\*/=]+)([\+\-\*/]?=[^=])(.+)$").match(line)
         if match:
+            log = LogTrace(frame, self.call_depth)
+            log.setvalue('%d execlate: %s' % (frame.f_lineno, frame.f_locals))
+            self.result.append(log)
+
             varnames = match.group(1).strip()
             try:
                 varnames = re.compile(r"^\((.+)\)$").match(varnames).group(1).strip()
@@ -190,24 +187,16 @@ class PyXdebug(object):
                 varnames = None
             if varnames:
                 for varname in varnames:
-                    objectname = None
-                    attrname = None
-                    value = None
-                    try:
-                        objectname, attrname = varname.split('.')
-                    except:
-                        pass
-                    if objectname:
-                        object = frame.f_locals.get(objectname, None)
-                        value = getattr(object, attrname, None)
-                    else:
-                        value = frame.f_locals.get(varname, None)
+                    value = get_frame_var(frame, varname)
                     trace = SubstituteTrace(frame, self.call_depth)
                     trace.setvalue(varname, value)
                     self.result.append(trace)
+        else:
+            log = LogTrace(frame, self.call_depth)
+            log.setvalue('nomatch: %s %s' % (line, frame.f_locals))
+            self.result.append(log)
 
     def trace_import(self, frame, arg):
-        trace_index = len(self.result)
         trace = ImportTrace(frame, self.call_depth)
         trace.setvalue(arg[0], arg[1], self.start_time)
         self.result.append(trace)
@@ -372,6 +361,19 @@ class FinishTrace(CallTrace):
         return u'%10.4f %10d' % (self.time or 0.0, self.memory or 0)
 
 
+class LogTrace(AbstractTrace):
+    def __init__(self, callee, call_depth):
+        super(LogTrace, self).__init__(callee, call_depth)
+        self.message = None
+
+    def setvalue(self, message):
+        self.message = message
+
+    def get_result(self):
+        sp = u' '*24 + u'  '*self.call_depth
+        return u'%s*> %s' % (sp, self.message)
+
+
 class PyXdebugError(Exception):
     pass
 
@@ -420,6 +422,27 @@ def get_method_name(frame):
         methodname = frame.f_code.co_name
     return methodname
 
+def get_frame_var(frame, varname):
+    objectname = None
+    attrname = None
+    value = None
+    try:
+        objectname, attrname = varname.split('.')
+    except:
+        pass
+    if objectname:
+        object = frame.f_locals.get(objectname, None)
+        value = getattr(object, attrname, None)
+    else:
+        value = frame.f_locals.get(varname, None)
+    return value
+
+class Clone(object):
+    def __init__(self, frame):
+        for k in dir(frame):
+            if not k.startswith('__') and not k.endswith('__'):
+                v = getattr(frame, k, None)
+                setattr(self, k, v)
 
 #=================================================
 
