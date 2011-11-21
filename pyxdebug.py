@@ -43,7 +43,6 @@ class PyXdebug(object):
         self.call_func_name = None
         self.call_late_dispatch = []
         self.late_dispatch = []
-        self.late_dispatch2 = []
         self.result = []
 
     def run_func(self, func, *args, **kwds):
@@ -137,18 +136,21 @@ class PyXdebug(object):
             if self.call_func_name is None or self.call_func_name!=frame.f_code.co_name:
                 return
 
+        frame = FrameWrap(frame)
+        frame.f_back = FrameWrap(frame.f_back)
+
         # dispatch
         if event=='call' or event=='c_call':
             self.trace_call(frame, arg)
+
         elif event=='return' or event=='c_return':
             self.trace_return(frame, arg)
-        elif event=='line' and self.collect_assignments:
-            self.late_dispatch.append(Clone(frame))
+
+        if event=='line' and self.collect_assignments:
+            self.late_dispatch.append(FrameWrap(frame))
             if len(self.late_dispatch)==2:
-                f = Clone(self.late_dispatch[1])
-                f2 = self.late_dispatch.pop(0)
-                f.f_code = f2.f_code
-                f.f_lineno = f2.f_lineno
+                f = FrameWrap(self.late_dispatch[1])
+                f.set_position(self.late_dispatch.pop(0))
                 self.trace_line(f, None)
 
         return self.trace_dispatch
@@ -174,7 +176,7 @@ class PyXdebug(object):
         if match:
             log = LogTrace(frame, self.call_depth)
             log.setvalue('%d execlate: %s' % (frame.f_lineno, frame.f_locals))
-            self.result.append(log)
+            #self.result.append(log)
 
             varnames = match.group(1).strip()
             try:
@@ -194,7 +196,7 @@ class PyXdebug(object):
         else:
             log = LogTrace(frame, self.call_depth)
             log.setvalue('nomatch: %s %s' % (line, frame.f_locals))
-            self.result.append(log)
+            #self.result.append(log)
 
     def trace_import(self, frame, arg):
         trace = ImportTrace(frame, self.call_depth)
@@ -437,12 +439,27 @@ def get_frame_var(frame, varname):
         value = frame.f_locals.get(varname, None)
     return value
 
-class Clone(object):
+
+class FrameWrap(object):
     def __init__(self, frame):
-        for k in dir(frame):
-            if not k.startswith('__') and not k.endswith('__'):
-                v = getattr(frame, k, None)
-                setattr(self, k, v)
+        keys = ('f_back', 'f_builtins', 'f_code', 'f_exc_traceback', 'f_exc_type', 'f_exc_value', 'f_globals', 'f_lasti', 'f_lineno', 'f_locals', 'f_restricted', 'f_trace')
+        for key in keys:
+            value = getattr(frame, key, None)
+            setattr(self, key, value)
+
+    def set_position(self, other):
+        self.f_code = getattr(other, 'f_code', None)
+        self.f_lineno = getattr(other, 'f_lineno', None)
+
+    def equals(self, other):
+        try:
+            lineno1 = self.f_lineno
+            filename1 = self.f_code.co_filename
+            lineno2 = other.f_lineno
+            filename2 = other.f_code.co_filename
+            return lineno1==lineno2 and filename1==filename2
+        except:
+            return False
 
 #=================================================
 
