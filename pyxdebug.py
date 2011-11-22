@@ -43,6 +43,9 @@ class PyXdebug(object):
         self.call_func_name = None
         self.call_late_dispatch = []
         self.late_dispatch = []
+        self.late_dispatch2 = []
+        self.last_event = None
+        self.last_frame = None
         self.result = []
 
     def run_func(self, func, *args, **kwds):
@@ -136,22 +139,54 @@ class PyXdebug(object):
             if self.call_func_name is None or self.call_func_name!=frame.f_code.co_name:
                 return
 
+        # normalize event
+        if event[0:2]=='c_':
+            event = event[2:]
+
+        # wrap frame
         frame = FrameWrap(frame)
         frame.f_back = FrameWrap(frame.f_back)
 
-        # dispatch
-        if event=='call' or event=='c_call':
+        # dispatch call
+        if event=='call':
             self.trace_call(frame, arg)
 
-        elif event=='return' or event=='c_return':
+        # dispatch return
+        elif event=='return':
             self.trace_return(frame, arg)
 
-        if event=='line' and self.collect_assignments:
-            self.late_dispatch.append(FrameWrap(frame))
+        # dispatch line
+        elif event=='line' and self.collect_assignments:
+            # assignments
+            self.late_dispatch.append(frame)
             if len(self.late_dispatch)==2:
-                f = FrameWrap(self.late_dispatch[1])
-                f.set_position(self.late_dispatch.pop(0))
-                self.trace_line(f, None)
+                log = LogTrace(frame, self.call_depth)
+                log.setvalue('line event: %s %s:%d %s' % (self.last_event, frame.f_code.co_filename, frame.f_lineno, frame.f_locals))
+                #self.result.append(log)
+
+                if self.last_event=='call' and self.last_frame.f_back.is_equal_position(self.late_dispatch[0]):
+                    # after call
+                    self.late_dispatch2.append(self.late_dispatch.pop(0))
+                else:
+                    # after return
+                    if self.last_event=='return':
+                        f_pos = self.late_dispatch2.pop()
+                        if f_pos:
+                            f = FrameWrap(frame)
+                            log = LogTrace(f, self.call_depth)
+                            log.setvalue('after return: %s:%s %s' % (f_pos.f_code.co_filename, f_pos.f_lineno, frame.f_locals))
+                            #self.result.append(log)
+
+                            f.set_position(f_pos)
+                            self.trace_line(f, None)
+
+                    # now
+                    f = FrameWrap(self.late_dispatch[1])
+                    f.set_position(self.late_dispatch.pop(0))
+                    self.trace_line(f, None)
+
+        self.last_event = event
+        self.last_frame = frame
 
         return self.trace_dispatch
 
@@ -451,7 +486,7 @@ class FrameWrap(object):
         self.f_code = getattr(other, 'f_code', None)
         self.f_lineno = getattr(other, 'f_lineno', None)
 
-    def equals(self, other):
+    def is_equal_position(self, other):
         try:
             lineno1 = self.f_lineno
             filename1 = self.f_code.co_filename
@@ -460,6 +495,7 @@ class FrameWrap(object):
             return lineno1==lineno2 and filename1==filename2
         except:
             return False
+
 
 #=================================================
 
