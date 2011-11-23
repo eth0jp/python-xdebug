@@ -10,7 +10,7 @@ setup(
     author           = __author__,
     author_email     = 'tetu@eth0.jp',
     url              = 'http://github.com/eth0jp/python-xdebug',
-    keywords         = 'xdebug profile profiler',
+    keywords         = 'xdebug debug debugger profile profiler',
     license          = __license__,
     py_modules       = ['pyxdebug'],
     classifiers      = ["Development Status :: 5 - Production/Stable",
