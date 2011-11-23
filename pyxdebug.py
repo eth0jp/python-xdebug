@@ -147,44 +147,24 @@ class PyXdebug(object):
         frame = FrameWrap(frame)
         frame.f_back = FrameWrap(frame.f_back)
 
+        print "%-7s %-3d %s" % (event, frame.f_lineno, frame.get_line().rstrip())
+
         # dispatch call
         if event=='call':
             self.trace_call(frame, arg)
 
         # dispatch return
         elif event=='return':
+            if self.collect_assignments:
+                self.trace_line(frame, arg)
+
             self.trace_return(frame, arg)
 
         # dispatch line
         elif event=='line' and self.collect_assignments:
-            # assignments
-            self.late_dispatch.append(frame)
-            if len(self.late_dispatch)==2:
-                log = LogTrace(frame, self.call_depth)
-                log.setvalue('line event: %s %s:%d %s' % (self.last_event, frame.f_code.co_filename, frame.f_lineno, frame.f_locals))
-                #self.result.append(log)
+            self.trace_line(frame, arg)
 
-                if self.last_event=='call' and self.last_frame.f_back.is_equal_position(self.late_dispatch[0]):
-                    # after call
-                    self.late_dispatch2.append(self.late_dispatch.pop(0))
-                else:
-                    # after return
-                    if self.last_event=='return':
-                        f_pos = self.late_dispatch2.pop()
-                        if f_pos:
-                            f = FrameWrap(frame)
-                            log = LogTrace(f, self.call_depth)
-                            log.setvalue('after return: %s:%s %s' % (f_pos.f_code.co_filename, f_pos.f_lineno, frame.f_locals))
-                            #self.result.append(log)
-
-                            f.set_position(f_pos)
-                            self.trace_line(f, None)
-
-                    # now
-                    f = FrameWrap(self.late_dispatch[1])
-                    f.set_position(self.late_dispatch.pop(0))
-                    self.trace_line(f, None)
-
+        # last
         self.last_event = event
         self.last_frame = frame
 
@@ -204,9 +184,40 @@ class PyXdebug(object):
             self.result.append(trace)
 
     def trace_line(self, frame, arg):
-        filename = frame.f_code.co_filename
-        lineno = frame.f_lineno
-        line = linecache.getline(filename, lineno).strip()
+        self.late_dispatch.append(frame)
+
+        if self.last_event=='return' and not is_substitute(frame.f_back):
+            self.late_dispatch.pop()
+
+        if len(self.late_dispatch)==2:
+            log = LogTrace(frame, self.call_depth)
+            log.setvalue('line event: %s %s:%d %s' % (self.last_event, frame.f_code.co_filename, frame.f_lineno, frame.f_locals))
+            self.result.append(log)
+
+            if self.last_event=='call' and self.last_frame.f_back.is_equal_position(self.late_dispatch[0]):
+                # after call
+                f = self.late_dispatch.pop(0)
+                self.late_dispatch2.append(f)
+            else:
+                # after return
+                if self.last_event=='return':
+                    f_pos = self.late_dispatch2.pop()
+                    if f_pos:
+                        f = FrameWrap(frame)
+                        log = LogTrace(f, self.call_depth)
+                        log.setvalue('after return: %s:%s %s' % (f_pos.f_code.co_filename, f_pos.f_lineno, frame.f_locals))
+                        self.result.append(log)
+
+                        f.set_position(f_pos)
+                        self._trace_line(f, None)
+
+                # now
+                f = FrameWrap(self.late_dispatch[1])
+                f.set_position(self.late_dispatch.pop(0))
+                self._trace_line(f, None)
+
+    def _trace_line(self, frame, arg):
+        line = frame.get_line().strip()
         match = re.compile(r"^([^\+\-\*/=]+)([\+\-\*/]?=[^=])(.+)$").match(line)
         if match:
             log = LogTrace(frame, self.call_depth)
@@ -459,6 +470,7 @@ def get_method_name(frame):
         methodname = frame.f_code.co_name
     return methodname
 
+
 def get_frame_var(frame, varname):
     objectname = None
     attrname = None
@@ -475,12 +487,32 @@ def get_frame_var(frame, varname):
     return value
 
 
+def is_substitute(frame):
+    line = frame.get_line().strip()
+    if re.compile(r"^([^\+\-\*/=]+)([\+\-\*/]?=[^=])(.+)$").match(line):
+        return True
+    return False
+
+
+def is_return(frame):
+    line = frame.get_line().strip()
+    words = re.compile(r"\s+").split(line)
+    if len(words) and words[0]=='return':
+        return True
+    return False
+
+
 class FrameWrap(object):
     def __init__(self, frame):
         keys = ('f_back', 'f_builtins', 'f_code', 'f_exc_traceback', 'f_exc_type', 'f_exc_value', 'f_globals', 'f_lasti', 'f_lineno', 'f_locals', 'f_restricted', 'f_trace')
         for key in keys:
             value = getattr(frame, key, None)
             setattr(self, key, value)
+
+    def get_line(self):
+        filename = self.f_code.co_filename
+        lineno = self.f_lineno
+        return linecache.getline(filename, lineno)
 
     def set_position(self, other):
         self.f_code = getattr(other, 'f_code', None)
