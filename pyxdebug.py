@@ -143,8 +143,6 @@ class PyXdebug(object):
         frame = FrameWrap(frame)
         frame.f_back = FrameWrap(frame.f_back)
 
-        print "%-7s %-3d %s" % (event, frame.f_lineno, frame.get_line().rstrip())
-
         # dispatch call
         if event=='call':
             self.trace_call(frame, arg)
@@ -195,10 +193,6 @@ class PyXdebug(object):
         line = frame.get_line().strip()
         match = re.compile(r"^([^\+\-\*/=]+)([\+\-\*/]?=[^=])(.+)$").match(line)
         if match:
-            log = LogTrace(frame, self.call_depth)
-            log.setvalue('%d execlate: %s' % (frame.f_lineno, frame.f_locals))
-            #self.result.append(log)
-
             varnames = match.group(1).strip()
             try:
                 varnames = re.compile(r"^\((.+)\)$").match(varnames).group(1).strip()
@@ -214,10 +208,6 @@ class PyXdebug(object):
                     trace = SubstituteTrace(frame, self.call_depth)
                     trace.setvalue(varname, value)
                     self.result.append(trace)
-        else:
-            log = LogTrace(frame, self.call_depth)
-            log.setvalue('nomatch: %s %s' % (line, frame.f_locals))
-            #self.result.append(log)
 
     def trace_import(self, frame, arg):
         trace = ImportTrace(frame, self.call_depth)
@@ -462,21 +452,6 @@ def get_frame_var(frame, varname):
     return value
 
 
-def is_substitute(frame):
-    line = frame.get_line().strip()
-    if re.compile(r"^([^\+\-\*/=]+)([\+\-\*/]?=[^=])(.+)$").match(line):
-        return True
-    return False
-
-
-def is_return(frame):
-    line = frame.get_line().strip()
-    words = re.compile(r"\s+").split(line)
-    if len(words) and words[0]=='return':
-        return True
-    return False
-
-
 class FrameWrap(object):
     def __init__(self, frame):
         keys = ('f_back', 'f_builtins', 'f_code', 'f_exc_traceback', 'f_exc_type', 'f_exc_value', 'f_globals', 'f_lasti', 'f_lineno', 'f_locals', 'f_restricted', 'f_trace')
@@ -492,16 +467,6 @@ class FrameWrap(object):
     def set_position(self, other):
         self.f_code = getattr(other, 'f_code', None)
         self.f_lineno = getattr(other, 'f_lineno', None)
-
-    def is_equal_position(self, other):
-        try:
-            lineno1 = self.f_lineno
-            filename1 = self.f_code.co_filename
-            lineno2 = other.f_lineno
-            filename2 = other.f_code.co_filename
-            return lineno1==lineno2 and filename1==filename2
-        except:
-            return False
 
 
 #=================================================
