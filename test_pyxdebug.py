@@ -141,6 +141,16 @@ class TestReloadTrace(object):
         assert result[24:24+20+20] == u'  '*10 + u'-> reload(pyxdebug) '
 
 
+class TestFinishTrace(object):
+    def test_trace(self):
+        trace = pyxdebug.FinishTrace(None, 0)
+        trace.setvalue(time.time())
+        result = trace.get_result()
+
+        assert len(result) == 21
+        assert result[10:11] == u' '
+
+
 if __name__ == '__main__':
     import nose
     nose.main()
