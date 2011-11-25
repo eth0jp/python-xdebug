@@ -1,35 +1,71 @@
 import pyxdebug
 
 class TestPyXdebug(object):
-    def __init__(self):
-        self.xd = pyxdebug.PyXdebug()
-
     def test_initialize_default_value(self):
-        assert getattr(self.xd, 'collect_imports', None)==1
-        assert getattr(self.xd, 'collect_params', None)==0
-        assert getattr(self.xd, 'collect_return', None)==0
-        assert getattr(self.xd, 'collect_assignments', None)==0
+        xd = pyxdebug.PyXdebug()
+        assert xd.collect_imports == 1
+        assert xd.collect_params == 0
+        assert xd.collect_return == 0
+        assert xd.collect_assignments == 0
 
     def test_initialize_debug_value(self):
-        assert getattr(self.xd, 'start_time', False) is None
-        assert getattr(self.xd, 'start_gmtime', False) is None
-        assert getattr(self.xd, 'end_gmtime', False) is None
-        assert getattr(self.xd, 'call_depth', None)==0
-        assert getattr(self.xd, 'call_func_name', False) is None
-        assert getattr(self.xd, 'late_dispatch', None)==[]
-        assert getattr(self.xd, 'result', None)==[]
+        xd = pyxdebug.PyXdebug()
+        assert xd.start_time is None
+        assert xd.start_gmtime is None
+        assert xd.end_gmtime is None
+        assert xd.call_depth == 0
+        assert xd.call_func_name is None
+        assert xd.late_dispatch == []
+        assert xd.result == []
 
-    def test_run_func(self):
+    def test_run_func_imports(self):
+        def func():
+            import pyxdebug
+            import pyxdebug
+            import pyxdebug
+
+        xd = pyxdebug.PyXdebug()
+        xd.collect_import = 1
+        xd.run_func(func)
+        result = [r for r in xd.result if r.__class__==pyxdebug.ImportTrace]
+
+        assert len(result)==3
+
+    def test_run_func_return(self):
+        def func():
+            return 123
+
+        xd = pyxdebug.PyXdebug()
+        xd.collect_return = 1
+        xd.run_func(func)
+        result = [r for r in xd.result if r.__class__==pyxdebug.ReturnTrace]
+
+        assert len(result)==1
+        assert result[0].value == 123
+
+    def test_run_func_assignments(self):
         def func():
             a = 123
             b = 456
             c = a + b
-        self.xd.run_func(func)
-        
+
+        xd = pyxdebug.PyXdebug()
+        xd.collect_assignments = 1
+        xd.run_func(func)
+        result = [r for r in xd.result if r.__class__==pyxdebug.AssignmentTrace]
+
+        assert len(result)==3
+        assert result[0].varname == 'a'
+        assert result[0].value == 123
+        assert result[1].varname == 'b'
+        assert result[1].value == 456
+        assert result[2].varname == 'c'
+        assert result[2].value == 123 + 456
 
     def test_run_statement(self):
         locals_ = {}
-        self.xd.run_statement("a = 123", locals_=locals_)
+        xd = pyxdebug.PyXdebug()
+        xd.run_statement("a = 123", locals_=locals_)
         assert locals_.get('a', None)==123
 
 if __name__ == '__main__':

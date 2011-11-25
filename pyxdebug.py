@@ -214,7 +214,7 @@ class PyXdebug(object):
             if varnames:
                 for varname in varnames:
                     value = get_frame_var(frame, varname)
-                    trace = SubstituteTrace(frame, self.call_depth)
+                    trace = AssignmentTrace(frame, self.call_depth)
                     trace.setvalue(varname, value)
                     self.result.append(trace)
 
@@ -313,17 +313,17 @@ class CallTrace(AbstractTrace):
 
 
 class ReturnTrace(AbstractTrace):
-    def setvalue(self, ret_value):
-        self.ret_value = ret_value
+    def setvalue(self, value):
+        self.value = value
 
     def get_result(self):
         sp = u' '*24 + u'  '*self.call_depth
-        return u'%s>=> %s' % (sp, pformat(self.ret_value))
+        return u'%s>=> %s' % (sp, pformat(self.value))
 
 
-class SubstituteTrace(AbstractTrace):
+class AssignmentTrace(AbstractTrace):
     def __init__(self, callee, call_depth):
-        super(SubstituteTrace, self).__init__(callee, call_depth)
+        super(AssignmentTrace, self).__init__(callee, call_depth)
         self.varname = None
         self.value = None
 
