@@ -151,6 +151,50 @@ class TestFinishTrace(object):
         assert result[10:11] == u' '
 
 
+class TestFunction(object):
+    def test_get_method_class(self):
+        cls = pyxdebug.get_method_class(inspect.currentframe())
+        assert cls == TestFunction
+
+    def test_get_method_name(self):
+        method_name = pyxdebug.get_method_name(inspect.currentframe())
+        assert method_name.endswith('.TestFunction.test_get_method_name')
+
+    def test_get_frame_var(self):
+        value = pyxdebug.get_frame_var(inspect.currentframe(), 'self')
+        assert value == self
+
+        local_var = 123
+        value = pyxdebug.get_frame_var(inspect.currentframe(), 'local_var')
+        assert value == local_var
+
+
+class TestFrameWrap(object):
+    def test_wrap(self):
+        frame = inspect.currentframe().f_back
+        wrap = pyxdebug.FrameWrap(frame)
+
+        assert frame.f_back == wrap.f_back
+        assert frame.f_builtins == wrap.f_builtins
+        assert frame.f_code == wrap.f_code
+        assert frame.f_exc_traceback == wrap.f_exc_traceback
+        assert frame.f_exc_type == wrap.f_exc_type
+        assert frame.f_exc_value == wrap.f_exc_value
+        assert frame.f_globals == wrap.f_globals
+        assert frame.f_lasti == wrap.f_lasti
+        assert frame.f_lineno == wrap.f_lineno
+        assert frame.f_locals == wrap.f_locals
+        assert frame.f_restricted == wrap.f_restricted
+        assert frame.f_trace == wrap.f_trace
+
+    def test_set_position(self):
+        frame = inspect.currentframe()
+        wrap = pyxdebug.FrameWrap(frame)
+        wrap.set_position(frame.f_back)
+        assert wrap.f_code == frame.f_back.f_code
+        assert wrap.f_lineno == frame.f_back.f_lineno
+
+
 if __name__ == '__main__':
     import nose
     nose.main()
