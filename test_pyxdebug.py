@@ -18,7 +18,17 @@ class TestPyXdebug(object):
         assert xd.late_dispatch == []
         assert xd.result == []
 
-    def test_run_func_imports(self):
+    def test_call_depth(self):
+        xd = pyxdebug.PyXdebug()
+        xd.run_file("example_run_file.py")
+        result = [r for r in xd.result if r.__class__==pyxdebug.CallTrace and r.callee_name().endswith('.Fib.calc')]
+
+        assert len(result)==15
+        call_depth_arr = [0, 1, 2, 3, 4, 4, 3, 2, 3, 3, 1, 2, 3, 3, 2]
+        for i in xrange(15):
+            assert result[i].call_depth == call_depth_arr[i]
+
+    def test_collect_imports(self):
         def func():
             import pyxdebug
             import pyxdebug
@@ -31,7 +41,7 @@ class TestPyXdebug(object):
 
         assert len(result)==3
 
-    def test_run_func_return(self):
+    def test_collect_return(self):
         def func():
             return 123
 
@@ -43,7 +53,7 @@ class TestPyXdebug(object):
         assert len(result)==1
         assert result[0].value == 123
 
-    def test_run_func_assignments(self):
+    def test_collect_assignments(self):
         def func():
             a = 123
             b = 456
@@ -67,16 +77,6 @@ class TestPyXdebug(object):
         xd = pyxdebug.PyXdebug()
         xd.run_statement("a = 123", locals_=locals_)
         assert locals_.get('a', None)==123
-
-    def test_run_file_call(self):
-        xd = pyxdebug.PyXdebug()
-        xd.run_file("example_run_file.py")
-        result = [r for r in xd.result if r.__class__==pyxdebug.CallTrace and r.callee_name().endswith('.Fib.calc')]
-
-        assert len(result)==15
-        call_depth_arr = [0, 1, 2, 3, 4, 4, 3, 2, 3, 3, 1, 2, 3, 3, 2]
-        for i in xrange(15):
-            assert result[i].call_depth == call_depth_arr[i]
 
 if __name__ == '__main__':
     import nose
