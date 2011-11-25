@@ -239,7 +239,7 @@ class PyXdebug(object):
         return result
 
 
-class AbstractTrace(object):
+class BaseTrace(object):
     def __init__(self, callee, call_depth):
         if callee:
             self.callee = callee
@@ -250,7 +250,7 @@ class AbstractTrace(object):
         self.call_depth = call_depth
 
 
-class CallTrace(AbstractTrace):
+class CallTrace(BaseTrace):
     def __init__(self, callee, call_depth):
         super(CallTrace, self).__init__(callee, call_depth)
         self.time = None
@@ -312,7 +312,7 @@ class CallTrace(AbstractTrace):
         return u'%10.4f %10d   %s-> %s(%s) %s:%d' % (self.time or 0.0, self.memory or 0, sp, self.callee_name(), params, self.caller_filename(), self.caller_lineno())
 
 
-class ReturnTrace(AbstractTrace):
+class ReturnTrace(BaseTrace):
     def setvalue(self, value):
         self.value = value
 
@@ -321,7 +321,7 @@ class ReturnTrace(AbstractTrace):
         return u'%s>=> %s' % (sp, pformat(self.value))
 
 
-class AssignmentTrace(AbstractTrace):
+class AssignmentTrace(BaseTrace):
     def __init__(self, callee, call_depth):
         super(AssignmentTrace, self).__init__(callee, call_depth)
         self.varname = None
@@ -383,7 +383,7 @@ class FinishTrace(CallTrace):
         return u'%10.4f %10d' % (self.time or 0.0, self.memory or 0)
 
 
-class LogTrace(AbstractTrace):
+class LogTrace(BaseTrace):
     def __init__(self, callee, call_depth):
         super(LogTrace, self).__init__(callee, call_depth)
         self.message = None
