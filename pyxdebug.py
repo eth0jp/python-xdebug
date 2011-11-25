@@ -49,12 +49,15 @@ class PyXdebug(object):
         self.call_func_name = getattr(func, '__name__', None)
         return self._run(func, *args, **kwds)
 
-    def run_statement(self, statement):
+    def run_statement(self, statement, globals_=None, locals_=None):
         self.initialize()
-        import __main__
-        dict = __main__.__dict__
+        if globals_ is None:
+            import __main__
+            globals_ = __main__.__dict__
+        if locals_ is None:
+            locals_ = inspect.currentframe().f_back.f_locals
         def exec_statement():
-            exec statement in dict, dict
+            exec statement in globals_, locals_
         return self._run(exec_statement)
 
     def run_file(self, script_path, globals_=None):
@@ -141,7 +144,13 @@ class PyXdebug(object):
 
         # wrap frame
         frame = FrameWrap(frame)
-        frame.f_back = FrameWrap(frame.f_back)
+        f_back = frame.f_back
+        while f_back:
+            if os.path.splitext(os.path.abspath(f_back.f_code.co_filename))[0]==this_path:
+                f_back = f_back.f_back
+            else:
+                break
+        frame.f_back = FrameWrap(f_back)
 
         # dispatch call
         if event=='call':
@@ -181,15 +190,15 @@ class PyXdebug(object):
             self.result.append(trace)
 
     def trace_line(self, frame, arg):
-        back_frame = self.late_dispatch[self.call_depth-1]
+        pre_frame = self.late_dispatch[self.call_depth-1]
         self.late_dispatch[self.call_depth-1] = frame
 
-        if back_frame:
+        if pre_frame:
             frame = FrameWrap(frame)
-            frame.set_position(back_frame)
-            self._trace_line(frame, None)
+            frame.set_position(pre_frame)
+            self._trace_line(frame)
 
-    def _trace_line(self, frame, arg):
+    def _trace_line(self, frame):
         line = frame.get_line().strip()
         match = re.compile(r"^([^\+\-\*/=]+)([\+\-\*/]?=[^=])(.+)$").match(line)
         if match:
