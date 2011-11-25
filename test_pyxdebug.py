@@ -1,4 +1,7 @@
 import pyxdebug
+import inspect
+import time
+
 
 class TestPyXdebug(object):
     def test_initialize_default_value(self):
@@ -77,6 +80,66 @@ class TestPyXdebug(object):
         xd = pyxdebug.PyXdebug()
         xd.run_statement("a = 123", locals_=locals_)
         assert locals_.get('a', None)==123
+
+
+class TestCallTrace(object):
+    def test_trace(self):
+        trace = pyxdebug.CallTrace(inspect.currentframe(), 10)
+        trace.setvalue(time.time(), 0)
+        result = trace.get_result()
+
+        assert result[24:24+20+2] == u'  '*10 + u'->'
+
+
+class TestReturnTrace(object):
+    def test_trace(self):
+        trace = pyxdebug.ReturnTrace(inspect.currentframe(), 10)
+        trace.setvalue(123)
+        result = trace.get_result()
+
+        assert result == u' '*24 + u'  '*10 + u'>=> 123'
+
+
+class TestAssignmentTrace(object):
+    def test_trace(self):
+        trace = pyxdebug.AssignmentTrace(inspect.currentframe(), 10)
+        trace.setvalue("var1", 123)
+        result = trace.get_result()
+
+        assert result[0:24+20+14] == u' '*24 + u'  '*10 + u'=> var1 = 123 '
+
+
+class TestImportTrace(object):
+    def test_trace_import(self):
+        trace = pyxdebug.ImportTrace(inspect.currentframe(), 10)
+        trace.setvalue("module1", None, time.time())
+        result = trace.get_result()
+
+        assert result[24:24+20+18] == u'  '*10 + u'-> import module1 '
+
+    def test_trace_from(self):
+        trace = pyxdebug.ImportTrace(inspect.currentframe(), 10)
+        trace.setvalue("module1", ['*'], time.time())
+        result = trace.get_result()
+
+        assert result[24:24+20+25] == u'  '*10 + u'-> from module1 import * '
+
+    def test_trace_from2(self):
+        trace = pyxdebug.ImportTrace(inspect.currentframe(), 10)
+        trace.setvalue("module1", ['cls1', 'cls2'], time.time())
+        result = trace.get_result()
+
+        assert result[24:24+20+34] == u'  '*10 + u'-> from module1 import cls1, cls2 '
+
+
+class TestReloadTrace(object):
+    def test_trace(self):
+        trace = pyxdebug.ReloadTrace(inspect.currentframe(), 10)
+        trace.setvalue(pyxdebug, time.time())
+        result = trace.get_result()
+
+        assert result[24:24+20+20] == u'  '*10 + u'-> reload(pyxdebug) '
+
 
 if __name__ == '__main__':
     import nose
