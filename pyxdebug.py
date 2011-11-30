@@ -77,12 +77,12 @@ class PyXdebug(object):
             original_import = __builtin__.__import__
             original_reload = __builtin__.reload
 
-            def __pyxdebug_import_hook(name, globals=None, locals=None, fromlist=None):
+            def __pyxdebug_import_hook(name, globals=None, locals=None, fromlist=None, **kwds):
                 frame = inspect.currentframe()
                 self.trace_import(frame, (name, fromlist))
                 result = None
                 try:
-                    result = original_import(name, globals, locals, fromlist)
+                    result = original_import(name, globals, locals, fromlist, **kwds)
                     return result
                 finally:
                     self.trace_return(frame, result)
