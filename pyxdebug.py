@@ -14,7 +14,7 @@ except ImportError:
 import __builtin__
 
 
-__version__ = '1.2.4'
+__version__ = '1.2.5'
 __author__ = 'Yoshida Tetsuya'
 __license__ = 'MIT License'
 
